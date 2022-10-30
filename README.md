@@ -1,2 +1,2 @@
-# dissertation-aidc
+# Chestii random momentan (legate de disertație)
  
