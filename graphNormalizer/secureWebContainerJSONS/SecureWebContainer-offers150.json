@@ -1,0 +1,85 @@
+{
+  "application" : "SecureWebContainer-offers150",
+  "components" :[
+    {
+      "id": 1, "name" : "Balancer",
+      "Compute": {"CPU":4, "GPU":"false", "Memory": 2048},
+      "Storage": {"StorageType": "HDD", "StorageSize": 500},
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    },
+    {
+      "id": 2, "name" : "Apache",
+      "Compute": {"CPU":2, "GPU":"false", "Memory": 512},
+      "Storage": {"StorageType": "HDD", "StorageSize": 1000},
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+
+    },
+    {
+      "id": 3, "name" : "Nginx",
+      "Compute": {"CPU":4, "GPU":"false", "Memory": 2048},
+      "Storage": {"StorageType": "HDD", "StorageSize": 1000},
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    },
+    {
+      "id": 4, "name" : "IDSServer",
+      "Compute": {"CPU":8, "GPU":"false", "Memory": 16000},
+      "Storage": {"StorageType": "HDD", "StorageSize": 2000},
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    },
+    {
+      "id": 5, "name" : "IDSAgent",
+      "Compute": {"CPU":1, "GPU":"false", "Memory": 256},
+      "Storage": {"StorageType": "HDD", "StorageSize": 250},
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    }
+  ],
+  "IP" : {"publicIPs": 1, "IPType": "IP4"},
+  "comment-restrictions": "Number 3 from LowerBound below is LoR=LevelOfRedundancy; FullDeployment: compsIdList: the list of components that component alpha is in conflict with",
+  "restrictions" : [
+    {"type":"Conflicts", "alphaCompId":1, "compsIdList":[2, 3, 4, 5]},
+    {"type":"Conflicts", "alphaCompId":2, "compsIdList":[3]},
+    {"type":"EqualBound",  "compsIdList":[1], "bound": 1},
+    {"type":"LowerBound",  "compsIdList":[2, 3], "bound": 3},
+    {"type":"Conflicts", "alphaCompId":4, "compsIdList":[1, 2, 3, 5]},
+    {"type":"FullDeployment", "alphaCompId":5, "compsIdList":[4, 1]},
+    {"type":"RequireProvide", "alphaCompId":4, "betaCompId":5, "alphaCompIdInstances":10, "betaCompIdInstances":1}
+  ],
+  "output" : [
+    {"min_price": 1785},
+    {"type_of_sym_br": "None"},
+    {"time (secs)": 5.94},
+    {"types_of_VMs": [111, 111, 0, 61, 111, 99]},
+    {"prices_of_VMs": [210, 210, 0, 644, 210, 511]},
+    {"VMs specs": [
+      {"c8.0m15.0s2.0osLinuxp0.5110000000": {"cpu": 8, "memory": 15000, "storage": 2000, "operatingSystem": "Linux", "price": 511}},
+      {"c4.0m7.5s2.0osLinuxp0.2100000000": {"cpu": 4, "memory": 7500, "storage": 2000, "operatingSystem": "Linux", "price": 210}},
+      {"c8.0m30.0s2.0osLinuxp0.6440000000": {"cpu": 8, "memory": 30000, "storage": 2000, "operatingSystem": "Linux", "price": 644}}
+    ]},
+    {"assign_matr": [
+      [1, 0, 0, 0, 0, 0],
+      [0, 1, 0, 0, 1, 0],
+      [0, 0, 0, 0, 0, 1],
+      [0, 0, 0, 1, 0, 0],
+      [0, 1, 0, 0, 1, 1]
+    ]}
+  ]
+}
+
+
+
+
