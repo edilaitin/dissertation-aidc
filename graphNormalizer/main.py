@@ -57,4 +57,5 @@ if __name__ == '__main__':
         graphs.append(get_graph_data(json_graph_data, filename))
 
     for graph in graphs:
-        graph.generate_train_file()
+        graph.generate_data(mode='train')
+        graph.generate_data(mode='test')

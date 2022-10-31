@@ -15,6 +15,9 @@ class Node:
     def get_label(self):
         return self.label
 
+    def equal(self, node):
+        return self.id == node.id
+
 
 class Edge:
     def __init__(self, node1, node2):
@@ -26,6 +29,9 @@ class Edge:
 
     def as_array(self):
         return [self.node1.id, self.node2.id]
+
+    def equal(self, edge):
+        return self.node1.equal(edge.node1) and self.node2.equal(edge.node2)
 
 
 class Graph:
@@ -44,6 +50,7 @@ class Graph:
 
     def edit_graph(self):
         ged = 0
+        # ADD NODES
         nr_nodes_added_pop = [0, 1, 2]
         weight_nodes = [0.5, 0.35, 0.15]
         add_nodes = choices(nr_nodes_added_pop, weight_nodes)[0]
@@ -51,17 +58,26 @@ class Graph:
         last_node = self.nodes[len(self.nodes) - 1]
         for i in range(0, add_nodes):
             ged = ged + 1
-            self.nodes.append(Node(last_node.id + i + 1, last_node.get_label()))
-
-        nr_edges_added_pop = [0, 1, 2]
-        weight_edges = [0.5, 0.35, 0.15]
-        add_edges = choices(nr_edges_added_pop, weight_edges)[0]
+            label = self.nodes[choices(range(self.vm_index_start, len(self.nodes)))[0]].get_label()
+            self.nodes.append(Node(last_node.id + i + 1, label))
+        # ADD EDGES
+        nr_edges_added_pop = range(10)
+        add_edges = choices(nr_edges_added_pop)[0]
         for i in range(0, add_edges):
-            ged = ged + 0
-            # self.nodes.append(Node(last_node.id + i + 1, last_node.get_label()))
+            from_node = self.nodes[choices(range(self.vm_index_start))[0]]
+            to_node = self.nodes[choices(range(self.vm_index_start, len(self.nodes)))[0]]
+            new_edge = Edge(from_node, to_node)
+            is_new = True
+            for edge in self.edges:
+                if edge.equal(new_edge):
+                    is_new = False
+            if is_new:
+                ged = ged + 1
+                self.edges.append(new_edge)
+
         return ged
 
-    def generate_train_file(self):
+    def generate_data(self, mode):
         graph2 = deepcopy(self)
         ged = graph2.edit_graph()
         graph_dict = {
@@ -72,10 +88,11 @@ class Graph:
             'ged': ged
         }
         json_object = json.dumps(graph_dict)
-        path = f'dataset/train/{self.filename}'
+        path = f'dataset/{mode}/{self.filename}'
         folder_path = path.rsplit('/', 1)[0]
         path_exist = os.path.exists(folder_path)
         if not path_exist:
             os.makedirs(folder_path)
         with open(path, 'w+') as outfile:
             outfile.write(json_object)
+
