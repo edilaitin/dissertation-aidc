@@ -81,10 +81,10 @@ class Graph:
         graph2 = deepcopy(self)
         ged = graph2.edit_graph()
         graph_dict = {
-            'graph1': [x.as_array() for x in self.edges],
-            'graph2': [x.as_array() for x in graph2.edges],
-            'labels1': [x.get_label() for x in self.nodes],
-            'labels2': [x.get_label() for x in graph2.nodes],
+            'graph_1': [x.as_array() for x in self.edges],
+            'graph_2': [x.as_array() for x in graph2.edges],
+            'labels_1': ['0'] + [x.get_label() for x in self.nodes],
+            'labels_2': ['0'] + [x.get_label() for x in graph2.nodes],
             'ged': ged
         }
         json_object = json.dumps(graph_dict)
