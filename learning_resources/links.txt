@@ -1,0 +1,13 @@
+https://github.com/Maneuver-PED/RecommendationEngine
+
+https://web.stanford.edu/class/cs224w/
+
+http://neuralnetworksanddeeplearning.com/chap1.html
+
+https://github.com/benedekrozemberczki/SimGNN
+
+https://d2l.ai/index.html
+
+https://pytorch.org/tutorials/beginner/basics/quickstart_tutorial.html
+
+https://www.tensorflow.org/tutorials
