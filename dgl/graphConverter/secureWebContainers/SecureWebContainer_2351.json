@@ -1,0 +1,272 @@
+{
+  "application": "SecureWebContainer",
+  "components": [
+    {
+      "id": 1,
+      "name": "Balancer",
+      "Compute": {
+        "CPU": 4,
+        "GPU": "false",
+        "Memory": 2048
+      },
+      "Storage": {
+        "StorageType": "HDD",
+        "StorageSize": 500
+      },
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    },
+    {
+      "id": 2,
+      "name": "Apache",
+      "Compute": {
+        "CPU": 2,
+        "GPU": "false",
+        "Memory": 512
+      },
+      "Storage": {
+        "StorageType": "HDD",
+        "StorageSize": 1000
+      },
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    },
+    {
+      "id": 3,
+      "name": "Nginx",
+      "Compute": {
+        "CPU": 4,
+        "GPU": "false",
+        "Memory": 2048
+      },
+      "Storage": {
+        "StorageType": "HDD",
+        "StorageSize": 1000
+      },
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    },
+    {
+      "id": 4,
+      "name": "IDSServer",
+      "Compute": {
+        "CPU": 8,
+        "GPU": "false",
+        "Memory": 16000
+      },
+      "Storage": {
+        "StorageType": "HDD",
+        "StorageSize": 2000
+      },
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    },
+    {
+      "id": 5,
+      "name": "IDSAgent",
+      "Compute": {
+        "CPU": 1,
+        "GPU": "false",
+        "Memory": 256
+      },
+      "Storage": {
+        "StorageType": "HDD",
+        "StorageSize": 250
+      },
+      "Network": {},
+      "keywords": [],
+      "operatingSystem": "",
+      "preferences": {}
+    }
+  ],
+  "IP": {
+    "publicIPs": 1,
+    "IPType": "IP4"
+  },
+  "comment-restrictions": "Number 3 from LowerBound below is LoR=LevelOfRedundancy; FullDeployment: compsIdList: the list of components that component alpha is in conflict with",
+  "restrictions": [
+    {
+      "type": "Conflicts",
+      "alphaCompId": 1,
+      "compsIdList": [
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "type": "Conflicts",
+      "alphaCompId": 2,
+      "compsIdList": [
+        3
+      ]
+    },
+    {
+      "type": "EqualBound",
+      "compsIdList": [
+        1
+      ],
+      "bound": 1
+    },
+    {
+      "type": "LowerBound",
+      "compsIdList": [
+        1,
+        2
+      ],
+      "bound": 3
+    },
+    {
+      "type": "Conflicts",
+      "alphaCompId": 4,
+      "compsIdList": [
+        1,
+        2,
+        3,
+        5
+      ]
+    },
+    {
+      "type": "FullDeployment",
+      "alphaCompId": 5,
+      "compsIdList": [
+        4,
+        1
+      ]
+    },
+    {
+      "type": "OneToManyDependency",
+      "alphaCompId": 4,
+      "betaCompId": 5,
+      "number": 10
+    }
+  ],
+  "output": {
+    "min_price": 27600,
+    "type_of_sym_br": "FVPR",
+    "time (secs)": 0.011999368667602539,
+    "types_of_VMs": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      4
+    ],
+    "prices_of_VMs": [
+      5520,
+      5520,
+      5520,
+      5520,
+      5520,
+      0
+    ],
+    "VMs specs": [
+      {
+        "c17.0m117.0s24.0osLinuxp5.5200000000": {
+          "cpu": 17,
+          "memory": 117000,
+          "storage": 24000,
+          "operatingSystem": "Linux",
+          "price": 5520,
+          "id": 2
+        }
+      },
+      {
+        "c1.0m3.75s1.0osLinuxp0.0980000000": {
+          "cpu": 1,
+          "memory": 3750,
+          "storage": 1000,
+          "operatingSystem": "Linux",
+          "price": 98,
+          "id": 4
+        }
+      }
+    ],
+    "assign_matr": [
+      [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        1,
+        1,
+        0
+      ]
+    ]
+  },
+  "offers": {
+    "c64.0m976.0s1.0osLinuxp8.4030000000": {
+      "cpu": 64,
+      "memory": 976000,
+      "storage": 1000,
+      "operatingSystem": "Linux",
+      "price": 8403,
+      "id": 1
+    },
+    "c17.0m117.0s24.0osLinuxp5.5200000000": {
+      "cpu": 17,
+      "memory": 117000,
+      "storage": 24000,
+      "operatingSystem": "Linux",
+      "price": 5520,
+      "id": 2
+    },
+    "c2.0m15.25s1.0osLinuxp0.2200000000": {
+      "cpu": 2,
+      "memory": 15250,
+      "storage": 1000,
+      "operatingSystem": "Linux",
+      "price": 220,
+      "id": 4
+    },
+    "c1.0m3.75s1.0osLinuxp0.0980000000": {
+      "cpu": 1,
+      "memory": 3750,
+      "storage": 1000,
+      "operatingSystem": "Linux",
+      "price": 98,
+      "id": 4
+    }
+  }
+}

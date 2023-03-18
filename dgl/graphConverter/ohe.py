@@ -2,7 +2,7 @@ import numpy as np
 
 
 def edge_constraints_encoding(constraint):
-    all_constraints = ["Conflicts", "Collocation", "RequireProvide", "ExclusiveDeployment", "UpperBound",
+    all_constraints = ["Conflicts", "Collocation", "OneToManyDependency", "ExclusiveDeployment", "UpperBound",
                        "LowerBound", "EqualBound"]
     mapping = {}
     for x in range(len(all_constraints)):

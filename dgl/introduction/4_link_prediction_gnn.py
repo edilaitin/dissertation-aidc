@@ -186,5 +186,7 @@ for e in range(100):
 # ----------- 5. check results ------------------------ #
 with torch.no_grad():
     pos_score = pred(test_pos_g, h)
+    print(pos_score)
     neg_score = pred(test_neg_g, h)
+    print(neg_score)
     print('AUC', compute_auc(pos_score, neg_score))

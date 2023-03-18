@@ -3,18 +3,22 @@ import collections.abc
 
 
 class Node:
-    def __init__(self, node_id, features):
+    def __init__(self, node_id, features, type):
         self.id = node_id
         self.features = features
+        self.type = type
 
     def __str__(self):
-        return f'\n  id: {self.id}, features: {self.features}'
+        return f'\n  id: {self.id}, type: {self.type}, features: {self.features}'
 
     def __repr__(self):
         return self.__str__()
 
     def get_label(self):
         return self.features
+
+    def get_type(self):
+        return self.type
 
     def equal(self, node):
         return self.id == node.id
@@ -46,10 +50,11 @@ class Edge:
 
 
 class Graph:
-    def __init__(self, filename, component_nodes, vm_nodes, restrictions):
+    def __init__(self, filename, component_nodes, vm_nodes, restrictions, assign_matr):
         self.filename = filename
         self.nodes = component_nodes + vm_nodes
         self.edges = []
+        self.links = []
         index_offset = len(component_nodes) + 1
         self.vm_index_start = index_offset
 
@@ -66,7 +71,7 @@ class Graph:
             if res["type"] in ["UpperBound", "LowerBound", "EqualBound"] and len(res["compsIdList"]) == 2:
                 node1 = next((x for x in component_nodes if x.id == res["compsIdList"][0]))
                 node2 = next((x for x in component_nodes if x.id == res["compsIdList"][1]))
-            if res["type"] == "RequireProvide":
+            if res["type"] == "OneToManyDependency":
                 node1 = next((x for x in component_nodes if x.id == res["alphaCompId"]))
                 node2 = next((x for x in component_nodes if x.id == res["betaCompId"]))
             if res["type"] in ["Conflicts", "Collocation", "ExclusiveDeployment"]:
@@ -85,6 +90,12 @@ class Graph:
                     edge_features = edge_constraints_encoding(res["type"])
                     edge = Edge(node1, node2, edge_features)
                     add_edge_features(edge)
+        for comp_idx, comp_links in enumerate(assign_matr):
+            for vm_idx, vm_linked in enumerate(comp_links):
+                node1 = next((x for x in component_nodes if x.id == comp_idx + 1))
+                node2 = next((x for x in vm_nodes if x.id == self.vm_index_start + vm_idx))
+                link = Edge(node1, node2, vm_linked)
+                self.links.append(link)
 
     def __str__(self):
         return f'Nodes: {self.nodes}, \nEdges: {self.edges}'
