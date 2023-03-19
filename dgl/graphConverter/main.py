@@ -27,10 +27,11 @@ def without_keys(d, keys):
     return {k: v for k, v in d.items() if k not in keys}
 
 
-def get_node_features(component, restrictions):
-    cpu = component["Compute"]["CPU"]
-    memory = component["Compute"]["Memory"]
-    storage = component["Storage"]["StorageSize"]
+def get_node_features(component, restrictions, max_cpu, max_mem, max_storage):
+    # normalize values
+    cpu = component["Compute"]["CPU"] / max_cpu
+    memory = component["Compute"]["Memory"] / max_mem
+    storage = component["Storage"]["StorageSize"] / max_storage
     full_deploy = 0
     upper_b = 0
     lower_b = 0
@@ -41,33 +42,33 @@ def get_node_features(component, restrictions):
         if res["type"] == "FullDeployment" and res["alphaCompId"] == node_id:
             full_deploy = 1
         if res["type"] == "UpperBound" and len(res["compsIdList"]) == 1 and node_id in res["compsIdList"]:
-            upper_b = res["bound"]
+            upper_b = 1
         if res["type"] == "LowerBound" and len(res["compsIdList"]) == 1 and node_id in res["compsIdList"]:
-            lower_b = res["bound"]
+            lower_b = 1
         if res["type"] == "EqualBound" and len(res["compsIdList"]) == 1 and node_id in res["compsIdList"]:
-            eq_b = res["bound"]
+            eq_b = 1
 
     return [cpu, memory, storage, full_deploy, upper_b, lower_b, eq_b]
 
 
-def get_component_nodes(json_data, restrictions):
+def get_component_nodes(json_data, restrictions, max_cpu, max_mem, max_storage):
     component_nodes = []
     for component in json_data['components']:
-        features = get_node_features(component, restrictions)
+        features = get_node_features(component, restrictions, max_cpu, max_mem, max_storage)
         component_node = Node(component['id'], features, "component")
         component_nodes.append(component_node)
     return component_nodes
 
 
-def get_vm_nodes(json_data, starting_index):
+def get_vm_nodes(json_data, starting_index, max_cpu, max_mem, max_storage, max_price):
     vm_nodes = []
     for idx, vm_type in enumerate(json_data['output']['types_of_VMs']):
         vm_specs = [vm for vm in json_data['output']['VMs specs'] if list(vm.values())[0]['id'] == vm_type][0]
         vm_features = [
-            list(vm_specs.values())[0]["cpu"],
-            list(vm_specs.values())[0]["memory"],
-            list(vm_specs.values())[0]["storage"],
-            list(vm_specs.values())[0]["price"]
+            list(vm_specs.values())[0]["cpu"] / max_cpu,
+            list(vm_specs.values())[0]["memory"] / max_mem,
+            list(vm_specs.values())[0]["storage"] / max_storage,
+            list(vm_specs.values())[0]["price"] / max_price
         ]
         vm_nodes.append(Node(starting_index + idx, vm_features, "vm"))
     return vm_nodes
@@ -76,8 +77,28 @@ def get_vm_nodes(json_data, starting_index):
 def get_graph_data(json_data, file_name):
     restrictions = json_data["restrictions"]
     assign = json_data["output"]["assign_matr"]
-    component_nodes = get_component_nodes(json_data, restrictions)
-    vm_nodes = get_vm_nodes(json_data, len(component_nodes) + 1)
+    # Determine max of each cpu/memory/storage/price for normalization in [0, 1]
+    max_cpu, max_mem, max_storage, max_price = 0, 0, 0, 0
+    for component in json_data['components']:
+        cpu = component["Compute"]["CPU"]
+        memory = component["Compute"]["Memory"]
+        storage = component["Storage"]["StorageSize"]
+        if cpu > max_cpu: max_cpu = cpu
+        if memory > max_mem: max_mem = memory
+        if storage > max_storage: max_storage = storage
+    for vm_type in json_data['output']['types_of_VMs']:
+        vm_specs = [vm for vm in json_data['output']['VMs specs'] if list(vm.values())[0]['id'] == vm_type][0]
+        cpu = list(vm_specs.values())[0]["cpu"]
+        memory = list(vm_specs.values())[0]["memory"]
+        storage = list(vm_specs.values())[0]["storage"],
+        price = list(vm_specs.values())[0]["price"]
+        if cpu > max_cpu: max_cpu = cpu
+        if memory > max_mem: max_mem = memory
+        if storage > max_storage: max_storage = storage
+        if price > max_price: max_price = price
+
+    component_nodes = get_component_nodes(json_data, restrictions, max_cpu, max_mem, max_storage)
+    vm_nodes = get_vm_nodes(json_data, len(component_nodes) + 1, max_cpu, max_mem, max_storage, max_price)
     return Graph(file_name, component_nodes, vm_nodes, restrictions, assign)
 
 
