@@ -32,8 +32,6 @@ class DGLGraph(DGLDataset):
 
         deployed_src = [j for j in range(size_components) for i in range(size_vms)]
         deployed_dest = [j for i in range(size_components) for j in range(size_vms)]
-        print(link_src)
-        print(link_dest)
         self.graph = dgl.heterograph({
             ('component', 'conflict', 'component'): (torch.tensor(components_src), torch.tensor(components_dest)), # component linkedCC
             ('component', 'linked', 'vm'): (torch.tensor(link_src), torch.tensor(link_dest)), # component linkedCM
@@ -45,11 +43,31 @@ class DGLGraph(DGLDataset):
         labels = [1 for x in self.graph_init.nodes]
         edge_features_conflicts = [x.features for x in self.graph_init.edges]
 
-        self.graph.nodes['component'].data['feat'] = torch.from_numpy(np.array(features_components))
-        self.graph.nodes['vm'].data['feat'] = torch.from_numpy(np.array(features_vms))
+        self.graph.nodes['component'].data['feat'] = torch.from_numpy(np.array(features_components).astype(np.float32))
+        self.graph.nodes['vm'].data['feat'] = torch.from_numpy(np.array(features_vms).astype(np.float32))
+        self.graph.edges['conflict'].data['feat'] = torch.from_numpy(np.array(edge_features_conflicts).astype(np.float32))
 
     def __getitem__(self, i):
         return self.graph
 
     def __len__(self):
         return 1
+
+def print_dataset(dgl_graph):
+    print('\n\nDGL graph dataset')
+    print(dgl_graph)
+    print("Component nodes")
+    print(dgl_graph.nodes('component'))
+    print("VM nodes")
+    print(dgl_graph.nodes('vm'))
+    print("CC LINKS")
+    print(dgl_graph.edges(etype='conflict'))
+    print("CM LINKS")
+    print(dgl_graph.edges(etype='linked'))
+    print("CM UNLINKS")
+    print(dgl_graph.edges(etype='unlinked'))
+    print("Node Features")
+    print(dgl_graph.ndata['feat']['component'])
+    print(dgl_graph.ndata['feat']['vm'])
+    print("Edge Features")
+    print(dgl_graph.edata)

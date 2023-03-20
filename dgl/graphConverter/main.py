@@ -5,7 +5,7 @@ import torch
 
 import numpy as np
 from graph import Node, Graph
-from dgl_graph import DGLGraph
+from dgl_graph import DGLGraph,print_dataset
 import torch.nn as nn
 import torch.nn.functional as F
 import dgl.nn as dglnn
@@ -90,7 +90,7 @@ def get_graph_data(json_data, file_name):
         vm_specs = [vm for vm in json_data['output']['VMs specs'] if list(vm.values())[0]['id'] == vm_type][0]
         cpu = list(vm_specs.values())[0]["cpu"]
         memory = list(vm_specs.values())[0]["memory"]
-        storage = list(vm_specs.values())[0]["storage"],
+        storage = list(vm_specs.values())[0]["storage"]
         price = list(vm_specs.values())[0]["price"]
         if cpu > max_cpu: max_cpu = cpu
         if memory > max_mem: max_mem = memory
@@ -171,9 +171,12 @@ if __name__ == '__main__':
         graphs.append(get_graph_data(json_graph_data, filename))
     train = []
     test = []
-    for graph in graphs[:9]:
+    for graph in graphs[:100]:
+        print('\n\nGraph Nodes AND Edges')
+        print(graph)
         dataset = DGLGraph(graph)
         dgl_graph = dataset[0]
+        # print_dataset(dgl_graph)
         if np.random.random() < 0.8:
             train.append(dgl_graph)
         else:
@@ -198,8 +201,6 @@ if __name__ == '__main__':
             node_features = {'component': comp_feats, 'vm': vm_feats}
 
             logits = model(train_graph, node_features, dec_graph)
-            print(logits.argmax(dim=-1))
-            print(edge_label)
 
             loss = F.cross_entropy(logits, edge_label)
             opt.zero_grad()
