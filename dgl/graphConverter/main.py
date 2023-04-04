@@ -151,15 +151,21 @@ class RGCN(nn.Module):
         h = self.conv2(graph, h)
         return h
 
-def to_assignment_matrix(tensor, components_nr):
-    print(tensor)
+def to_assignment_matrix(graph, dec_graph, tensor, components_nr):
     vms_nr = int(len(tensor) / components_nr)
     assign_matrix = [[0 for _ in range(vms_nr)] for _ in range(components_nr)]
-    for comp_ind in range(components_nr):
-        for vm_ind in range(vms_nr):
-            value = tensor[comp_ind * vms_nr + vm_ind]
-            if value == 1:
-                assign_matrix[comp_ind][vm_ind] = 1
+
+    for dec_ind in range(len(tensor)):
+        type = dec_graph.edata[dgl.ETYPE][dec_ind].item()
+        orig_index = dec_graph.edata[dgl.EID][dec_ind].item()
+        type_edge = graph.etypes[type]
+        component = graph.edges(form='uv', order='srcdst', etype=type_edge)[0][orig_index].item()
+        vm = graph.edges(form='uv', order='srcdst', etype=type_edge)[1][orig_index].item()
+        value = tensor[dec_ind].item()
+        if value == 2:
+            assign_matrix[component][vm] = 0
+        else:
+            assign_matrix[component][vm] = 1
     return assign_matrix
 
 
@@ -169,29 +175,45 @@ if __name__ == '__main__':
     for json_graph_data in data:
         filename = json_graph_data['filename']
         graphs.append(get_graph_data(json_graph_data, filename))
-    train = []
-    test = []
-    for graph in graphs[:100]:
+
+    dgl_graphs = []
+    for graph in graphs[:1000]:
         print('\n\nGraph Nodes AND Edges')
         print(graph)
         dataset = DGLGraph(graph)
         dgl_graph = dataset[0]
         # print_dataset(dgl_graph)
-        if np.random.random() < 0.8:
-            train.append(dgl_graph)
-        else:
-            test.append(dgl_graph)
+        dgl_graphs.append(dgl_graph)
+
+    arr = np.array(dgl_graphs)
+    # Calculate the sizes of the three parts
+    n = len(arr)
+    size1 = int(0.6 * n)
+    size2 = int(0.2 * n)
+
+    # Split the array into three parts
+    train = arr[:size1].tolist()
+    validation = arr[size1:size1 + size2].tolist()
+    test = arr[size1 + size2:].tolist()
 
     model = Model(7, 10, 5, ['conflict', 'linked', 'unlinked'])
     opt = torch.optim.Adam(model.parameters())
     loss_list = []
-    acc_list = []
+    acc_training_list = []
+    acc_validation_list = []
 
     epochs = 100
     for epoch in range(epochs):
+        ###########################################################################################################################################################
+        ######################################################################## TRAINING #########################################################################
+        ###########################################################################################################################################################
         # set the model to train mode
         model.train()
         avg_loss = []
+        # create empty lists to store the predictions and true labels
+        y_pred = []
+        y_true = []
+
         for train_graph in train:
             dec_graph = train_graph['component', :, 'vm']
 
@@ -207,44 +229,52 @@ if __name__ == '__main__':
             loss.backward()
             opt.step()
             avg_loss.append(loss.item())
-            print(loss.item())
+            y_pred.append(logits.argmax(dim=-1))
+            y_true.append(edge_label)
+
+        # concatenate the predictions and true labels into tensors
+        y_pred = torch.cat(y_pred)
+        y_true = torch.cat(y_true)
+
+        # compute the accuracy of the model on the training set
+        accuracy = (y_pred == y_true).float().mean().item()
+        acc_training_list.append(accuracy)
+        print("Training accuracy:", accuracy)
 
         loss_list.append(sum(avg_loss)/len(avg_loss))
+
+        ###########################################################################################################################################################
+        ####################################################################### VALIDATION ########################################################################
+        ###########################################################################################################################################################
+
         # create empty lists to store the predictions and true labels
         y_pred = []
         y_true = []
 
         # set the model to evaluation mode
-        model.eval()
+        # model.eval()
 
-        # loop over the test graphs and compute the predictions and true labels
-        for test_graph in test:
-            dec_graph = test_graph['component', :, 'vm']
-            # print(f"EDGES {test_graph.edges('all', etype='linked')} \n")
-            # print(f"EDGES {test_graph.edges('all', etype='unlinked')} \n")
+        # loop over the validation graphs and compute the predictions and true labels
+        for validation_graph in validation:
+            dec_graph = validation_graph['component', :, 'vm']
 
             edge_label = dec_graph.edata[dgl.ETYPE]
-            comp_feats = test_graph.nodes['component'].data['feat']
-            vm_feats = test_graph.nodes['vm'].data['feat']
+            comp_feats = validation_graph.nodes['component'].data['feat']
+            vm_feats = validation_graph.nodes['vm'].data['feat']
             node_features = {'component': comp_feats, 'vm': vm_feats}
             with torch.no_grad():
-                logits = model(test_graph, node_features, dec_graph)
-            # print(logits)
+                logits = model(validation_graph, node_features, dec_graph)
             y_pred.append(logits.argmax(dim=-1))
-            # print(to_assignment_matrix(logits.argmax(dim=-1).numpy(), 5))
-            # print(to_assignment_matrix(edge_label, 5))
             y_true.append(edge_label)
 
         # concatenate the predictions and true labels into tensors
         y_pred = torch.cat(y_pred)
-        # print(y_pred)
         y_true = torch.cat(y_true)
-        # print(y_true)
 
-        # compute the accuracy of the model on the test set
+        # compute the accuracy of the model on the validation set
         accuracy = (y_pred == y_true).float().mean().item()
-        acc_list.append(accuracy)
-        print("Test accuracy:", accuracy)
+        acc_validation_list.append(accuracy)
+        print("Validation accuracy:", accuracy)
 
     plt.plot(range(epochs), loss_list, label='Loss')
     # plt.plot(range(epochs), acc_list, label='Accuracy')
@@ -253,9 +283,47 @@ if __name__ == '__main__':
     plt.show()
 
     # plt.plot(range(epochs), loss_list, label='Loss')
-    plt.plot(range(epochs), acc_list, label='Accuracy')
+    plt.plot(range(epochs), acc_training_list, label='Training Accuracy')
+    plt.plot(range(epochs), acc_validation_list, label='Validation Accuracy')
     plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
     plt.legend()
     plt.show()
+
+    ###########################################################################################################################################################
+    ######################################################################### TESTING #########################################################################
+    ###########################################################################################################################################################
+    # create empty lists to store the predictions and true labels
+    y_pred = []
+    y_true = []
+
+    # set the model to evaluation mode
+    model.eval()
+
+    # loop over the test graphs and compute the predictions and true labels
+    for test_graph in test:
+        dec_graph = test_graph['component', :, 'vm']
+        print(dec_graph)
+
+        edge_label = dec_graph.edata[dgl.ETYPE]
+        comp_feats = test_graph.nodes['component'].data['feat']
+        vm_feats = test_graph.nodes['vm'].data['feat']
+        node_features = {'component': comp_feats, 'vm': vm_feats}
+        with torch.no_grad():
+            logits = model(test_graph, node_features, dec_graph)
+        pred = logits.argmax(dim=-1)
+        y_pred.append(pred)
+        print(f"Prediction {to_assignment_matrix(test_graph, dec_graph, pred, 5)}")
+        y_true.append(edge_label)
+        print(f"Actual {to_assignment_matrix(test_graph, dec_graph, edge_label, 5)}")
+
+    # concatenate the predictions and true labels into tensors
+    y_pred = torch.cat(y_pred)
+    y_true = torch.cat(y_true)
+
+    # compute the accuracy of the model on the validation set
+    accuracy = (y_pred == y_true).float().mean().item()
+    acc_validation_list.append(accuracy)
+    print("Testing accuracy:", accuracy)
 
 
