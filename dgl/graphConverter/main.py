@@ -177,7 +177,7 @@ if __name__ == '__main__':
         graphs.append(get_graph_data(json_graph_data, filename))
 
     dgl_graphs = []
-    for graph in graphs[:1000]:
+    for graph in graphs[:100]:
         print('\n\nGraph Nodes AND Edges')
         print(graph)
         dataset = DGLGraph(graph)
@@ -199,10 +199,12 @@ if __name__ == '__main__':
     model = Model(7, 10, 5, ['conflict', 'linked', 'unlinked'])
     opt = torch.optim.Adam(model.parameters())
     loss_list = []
+    loss_list_valid = []
+
     acc_training_list = []
     acc_validation_list = []
 
-    epochs = 100
+    epochs = 75
     for epoch in range(epochs):
         ###########################################################################################################################################################
         ######################################################################## TRAINING #########################################################################
@@ -253,6 +255,7 @@ if __name__ == '__main__':
 
         # set the model to evaluation mode
         # model.eval()
+        avg_loss = []
 
         # loop over the validation graphs and compute the predictions and true labels
         for validation_graph in validation:
@@ -264,8 +267,18 @@ if __name__ == '__main__':
             node_features = {'component': comp_feats, 'vm': vm_feats}
             with torch.no_grad():
                 logits = model(validation_graph, node_features, dec_graph)
+                loss = F.cross_entropy(logits, edge_label)
+                # opt.zero_grad()
+                # loss.backward()
+                # opt.step()
+                avg_loss.append(loss.item())
+
             y_pred.append(logits.argmax(dim=-1))
             y_true.append(edge_label)
+
+        loss_avg = sum(avg_loss)/len(avg_loss)
+        print("APPEND", loss_list_valid, loss_avg)
+        loss_list_valid.append(loss_avg)
 
         # concatenate the predictions and true labels into tensors
         y_pred = torch.cat(y_pred)
@@ -276,7 +289,11 @@ if __name__ == '__main__':
         acc_validation_list.append(accuracy)
         print("Validation accuracy:", accuracy)
 
-    plt.plot(range(epochs), loss_list, label='Loss')
+    print(loss_list)
+    print(loss_list_valid)
+
+    plt.plot(range(epochs), loss_list, label='Loss Train')
+    plt.plot(range(epochs), loss_list_valid, label='Loss Valid')
     # plt.plot(range(epochs), acc_list, label='Accuracy')
     plt.xlabel('Epoch')
     plt.legend()
