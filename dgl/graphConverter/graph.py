@@ -1,6 +1,6 @@
 from ohe import edge_constraints_encoding
 import collections.abc
-
+from collections import defaultdict
 
 class Node:
     def __init__(self, node_id, features, type):
@@ -50,7 +50,7 @@ class Edge:
 
 
 class Graph:
-    def __init__(self, filename, component_nodes, vm_nodes, restrictions, assign_matr):
+    def __init__(self, filename, component_nodes, vm_nodes, restrictions, assign_matr, output, surrogate_result):
         self.filename = filename
         self.nodes = component_nodes + vm_nodes
         self.edges = []
@@ -90,12 +90,25 @@ class Graph:
                     edge_features = edge_constraints_encoding(res["type"])
                     edge = Edge(node1, node2, edge_features)
                     add_edge_features(edge)
+        links_exists = defaultdict(dict)
         for comp_idx, comp_links in enumerate(assign_matr):
+            type_indexes = [0] * int(len(vm_nodes) / surrogate_result)
             for vm_idx, vm_linked in enumerate(comp_links):
                 node1 = next((x for x in component_nodes if x.id == comp_idx + 1))
-                node2 = next((x for x in vm_nodes if x.id == self.vm_index_start + vm_idx))
-                link = Edge(node1, node2, vm_linked)
-                self.links.append(link)
+                type_vm = output['types_of_VMs'][vm_idx] - 1
+                vm_type_idx = surrogate_result * type_vm + type_indexes[type_vm]
+                type_indexes[type_vm] = type_indexes[type_vm] + 1
+                if vm_linked:
+                    node2 = next((x for x in vm_nodes if x.id == self.vm_index_start + vm_type_idx))
+                    link = Edge(node1, node2, vm_linked)
+                    links_exists[node1.id][node2.id] = True
+                    self.links.append(link)
+
+        for comp in component_nodes:
+            for vm in vm_nodes:
+                if not links_exists.get(comp.id).get(vm.id):
+                    link = Edge(comp, vm, 0)
+                    self.links.append(link)
 
     def __str__(self):
-        return f'Nodes: {self.nodes}, \nEdges: {self.edges}'
+        return f'Nodes: {self.nodes}, \nEdges: {self.edges}, \nLinks: {self.links}'

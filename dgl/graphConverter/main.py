@@ -60,17 +60,20 @@ def get_component_nodes(json_data, restrictions, max_cpu, max_mem, max_storage):
     return component_nodes
 
 
-def get_vm_nodes(json_data, starting_index, max_cpu, max_mem, max_storage, max_price):
+def get_vm_nodes(json_data, starting_index, max_cpu, max_mem, max_storage, max_price, surrogate_result):
     vm_nodes = []
-    for idx, vm_type in enumerate(json_data['output']['types_of_VMs']):
-        vm_specs = [vm for vm in json_data['output']['VMs specs'] if list(vm.values())[0]['id'] == vm_type][0]
+    idx = 0
+    for vm_type in json_data['output']['offers'].keys():
+        vm_specs = json_data['output']['offers'][vm_type]
         vm_features = [
-            list(vm_specs.values())[0]["cpu"] / max_cpu,
-            list(vm_specs.values())[0]["memory"] / max_mem,
-            list(vm_specs.values())[0]["storage"] / max_storage,
-            list(vm_specs.values())[0]["price"] / max_price
+            vm_specs["cpu"] / max_cpu,
+            vm_specs["memory"] / max_mem,
+            vm_specs["storage"] / max_storage,
+            vm_specs["price"] / max_price
         ]
-        vm_nodes.append(Node(starting_index + idx, vm_features, "vm"))
+        for i in range(surrogate_result):
+            vm_nodes.append(Node(starting_index + idx, vm_features, "vm"))
+            idx = idx + 1
     return vm_nodes
 
 
@@ -97,9 +100,10 @@ def get_graph_data(json_data, file_name):
         if storage > max_storage: max_storage = storage
         if price > max_price: max_price = price
 
+    surrogate_result = 6
     component_nodes = get_component_nodes(json_data, restrictions, max_cpu, max_mem, max_storage)
-    vm_nodes = get_vm_nodes(json_data, len(component_nodes) + 1, max_cpu, max_mem, max_storage, max_price)
-    return Graph(file_name, component_nodes, vm_nodes, restrictions, assign)
+    vm_nodes = get_vm_nodes(json_data, len(component_nodes) + 1, max_cpu, max_mem, max_storage, max_price, surrogate_result)
+    return Graph(file_name, component_nodes, vm_nodes, restrictions, assign, json_data["output"], surrogate_result)
 
 
 class HeteroMLPPredictor(nn.Module):
@@ -136,7 +140,7 @@ class Model(nn.Module):
 class RGCN(nn.Module):
     def __init__(self, in_feats, hid_feats, out_feats, rel_names):
         super().__init__()
-
+        # INCREASE LAYERS
         self.conv1 = dglnn.HeteroGraphConv({
             rel: dglnn.GraphConv(in_feats, hid_feats)
             for rel in rel_names}, aggregate='sum')
@@ -170,16 +174,16 @@ def to_assignment_matrix(graph, dec_graph, tensor, components_nr):
 
 
 if __name__ == '__main__':
-    data = read_jsons('secureWebContainers')
+    data = read_jsons('secureWebContainers_DO')
     graphs = []
     for json_graph_data in data:
         filename = json_graph_data['filename']
         graphs.append(get_graph_data(json_graph_data, filename))
 
     dgl_graphs = []
-    for graph in graphs[:100]:
-        print('\n\nGraph Nodes AND Edges')
-        print(graph)
+    for graph in graphs[:10000]:
+        # print('\n\nGraph Nodes AND Edges')
+        # print(graph)
         dataset = DGLGraph(graph)
         dgl_graph = dataset[0]
         # print_dataset(dgl_graph)
@@ -204,18 +208,19 @@ if __name__ == '__main__':
     acc_training_list = []
     acc_validation_list = []
 
-    epochs = 75
+    epochs = 50
     for epoch in range(epochs):
         ###########################################################################################################################################################
         ######################################################################## TRAINING #########################################################################
         ###########################################################################################################################################################
         # set the model to train mode
         model.train()
-        avg_loss = []
         # create empty lists to store the predictions and true labels
         y_pred = []
         y_true = []
 
+        total_logits = None
+        total_labels = None
         for train_graph in train:
             dec_graph = train_graph['component', :, 'vm']
 
@@ -225,12 +230,14 @@ if __name__ == '__main__':
             node_features = {'component': comp_feats, 'vm': vm_feats}
 
             logits = model(train_graph, node_features, dec_graph)
-
-            loss = F.cross_entropy(logits, edge_label)
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-            avg_loss.append(loss.item())
+            if total_logits == None:
+                total_logits = logits
+            else:
+                total_logits = torch.cat((total_logits, logits))
+            if total_labels == None:
+                total_labels = edge_label
+            else:
+                total_labels = torch.cat((total_labels, edge_label))
             y_pred.append(logits.argmax(dim=-1))
             y_true.append(edge_label)
 
@@ -242,8 +249,6 @@ if __name__ == '__main__':
         accuracy = (y_pred == y_true).float().mean().item()
         acc_training_list.append(accuracy)
         print("Training accuracy:", accuracy)
-
-        loss_list.append(sum(avg_loss)/len(avg_loss))
 
         ###########################################################################################################################################################
         ####################################################################### VALIDATION ########################################################################
@@ -268,16 +273,12 @@ if __name__ == '__main__':
             with torch.no_grad():
                 logits = model(validation_graph, node_features, dec_graph)
                 loss = F.cross_entropy(logits, edge_label)
-                # opt.zero_grad()
-                # loss.backward()
-                # opt.step()
                 avg_loss.append(loss.item())
 
             y_pred.append(logits.argmax(dim=-1))
             y_true.append(edge_label)
 
         loss_avg = sum(avg_loss)/len(avg_loss)
-        print("APPEND", loss_list_valid, loss_avg)
         loss_list_valid.append(loss_avg)
 
         # concatenate the predictions and true labels into tensors
@@ -288,6 +289,12 @@ if __name__ == '__main__':
         accuracy = (y_pred == y_true).float().mean().item()
         acc_validation_list.append(accuracy)
         print("Validation accuracy:", accuracy)
+
+        loss = F.cross_entropy(total_logits, total_labels)
+        loss_list.append(loss.item())
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
 
     print(loss_list)
     print(loss_list_valid)

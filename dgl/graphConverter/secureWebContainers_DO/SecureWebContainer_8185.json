@@ -1,0 +1,395 @@
+{
+    "application": "SecureWebContainer",
+    "components": [
+        {
+            "id": 1,
+            "name": "Balancer",
+            "Compute": {
+                "CPU": 1000,
+                "GPU": "false",
+                "Memory": 2048
+            },
+            "Storage": {
+                "StorageType": "HDD",
+                "StorageSize": 500
+            },
+            "Network": {},
+            "keywords": [],
+            "operatingSystem": "",
+            "preferences": {}
+        },
+        {
+            "id": 2,
+            "name": "Apache",
+            "Compute": {
+                "CPU": 2000,
+                "GPU": "false",
+                "Memory": 512
+            },
+            "Storage": {
+                "StorageType": "HDD",
+                "StorageSize": 1000
+            },
+            "Network": {},
+            "keywords": [],
+            "operatingSystem": "",
+            "preferences": {}
+        },
+        {
+            "id": 3,
+            "name": "Nginx",
+            "Compute": {
+                "CPU": 2000,
+                "GPU": "false",
+                "Memory": 2048
+            },
+            "Storage": {
+                "StorageType": "HDD",
+                "StorageSize": 1000
+            },
+            "Network": {},
+            "keywords": [],
+            "operatingSystem": "",
+            "preferences": {}
+        },
+        {
+            "id": 4,
+            "name": "IDSServer",
+            "Compute": {
+                "CPU": 2000,
+                "GPU": "false",
+                "Memory": 16000
+            },
+            "Storage": {
+                "StorageType": "HDD",
+                "StorageSize": 2000
+            },
+            "Network": {},
+            "keywords": [],
+            "operatingSystem": "",
+            "preferences": {}
+        },
+        {
+            "id": 5,
+            "name": "IDSAgent",
+            "Compute": {
+                "CPU": 1000,
+                "GPU": "false",
+                "Memory": 256
+            },
+            "Storage": {
+                "StorageType": "HDD",
+                "StorageSize": 250
+            },
+            "Network": {},
+            "keywords": [],
+            "operatingSystem": "",
+            "preferences": {}
+        }
+    ],
+    "IP": {
+        "publicIPs": 1,
+        "IPType": "IP4"
+    },
+    "comment-restrictions": "Number 3 from LowerBound below is LoR=LevelOfRedundancy; FullDeployment: compsIdList: the list of components that component alpha is in conflict with",
+    "restrictions": [
+        {
+            "type": "Conflicts",
+            "alphaCompId": 1,
+            "compsIdList": [
+                2,
+                3,
+                4,
+                5
+            ]
+        },
+        {
+            "type": "Conflicts",
+            "alphaCompId": 2,
+            "compsIdList": [
+                3
+            ]
+        },
+        {
+            "type": "EqualBound",
+            "compsIdList": [
+                1
+            ],
+            "bound": 1
+        },
+        {
+            "type": "LowerBound",
+            "compsIdList": [
+                1,
+                2
+            ],
+            "bound": 3
+        },
+        {
+            "type": "Conflicts",
+            "alphaCompId": 4,
+            "compsIdList": [
+                1,
+                2,
+                3,
+                5
+            ]
+        },
+        {
+            "type": "FullDeployment",
+            "alphaCompId": 5,
+            "compsIdList": [
+                4,
+                1
+            ]
+        },
+        {
+            "type": "OneToManyDependency",
+            "alphaCompId": 4,
+            "betaCompId": 5,
+            "number": 10
+        }
+    ],
+    "output": {
+        "min_price": 4300,
+        "type_of_sym_br": "FVPR",
+        "time (secs)": 0.07664322853088379,
+        "types_of_VMs": [
+            7,
+            19,
+            10,
+            10,
+            10
+        ],
+        "prices_of_VMs": [
+            240,
+            2620,
+            480,
+            480,
+            480
+        ],
+        "VMs specs": [
+            {
+                "s-2vcpu-4gb": {
+                    "cpu": 1800,
+                    "memory": 3150,
+                    "storage": 69000,
+                    "operatingSystem": "Linux",
+                    "price": 240,
+                    "id": 7
+                }
+            },
+            {
+                "s-4vcpu-8gb": {
+                    "cpu": 3600,
+                    "memory": 6750,
+                    "storage": 141000,
+                    "operatingSystem": "Linux",
+                    "price": 480,
+                    "id": 10
+                }
+            },
+            {
+                "m6-4vcpu-32gb": {
+                    "cpu": 3600,
+                    "memory": 28350,
+                    "storage": 537000,
+                    "operatingSystem": "Linux",
+                    "price": 2620,
+                    "id": 19
+                }
+            }
+        ],
+        "assign_matr": [
+            [
+                1,
+                0,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                1,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                0,
+                1,
+                1
+            ],
+            [
+                0,
+                1,
+                0,
+                0,
+                0
+            ],
+            [
+                0,
+                0,
+                1,
+                1,
+                1
+            ]
+        ],
+        "offers": {
+            "s-1vcpu-2gb": {
+                "cpu": 900,
+                "memory": 1350,
+                "storage": 42000,
+                "operatingSystem": "Linux",
+                "price": 120,
+                "id": 1
+            },
+            "s-1vcpu-2gb-amd": {
+                "cpu": 900,
+                "memory": 1350,
+                "storage": 42000,
+                "operatingSystem": "Linux",
+                "price": 140,
+                "id": 2
+            },
+            "s-1vcpu-2gb-intel": {
+                "cpu": 900,
+                "memory": 1350,
+                "storage": 42000,
+                "operatingSystem": "Linux",
+                "price": 140,
+                "id": 3
+            },
+            "s-2vcpu-2gb": {
+                "cpu": 1800,
+                "memory": 1350,
+                "storage": 51000,
+                "operatingSystem": "Linux",
+                "price": 180,
+                "id": 4
+            },
+            "s-2vcpu-2gb-amd": {
+                "cpu": 1800,
+                "memory": 1350,
+                "storage": 51000,
+                "operatingSystem": "Linux",
+                "price": 210,
+                "id": 5
+            },
+            "s-2vcpu-2gb-intel": {
+                "cpu": 1800,
+                "memory": 1350,
+                "storage": 51000,
+                "operatingSystem": "Linux",
+                "price": 210,
+                "id": 6
+            },
+            "s-2vcpu-4gb": {
+                "cpu": 1800,
+                "memory": 3150,
+                "storage": 69000,
+                "operatingSystem": "Linux",
+                "price": 240,
+                "id": 7
+            },
+            "s-2vcpu-4gb-amd": {
+                "cpu": 1800,
+                "memory": 3150,
+                "storage": 69000,
+                "operatingSystem": "Linux",
+                "price": 280,
+                "id": 8
+            },
+            "s-2vcpu-4gb-intel": {
+                "cpu": 1800,
+                "memory": 3150,
+                "storage": 69000,
+                "operatingSystem": "Linux",
+                "price": 280,
+                "id": 9
+            },
+            "s-4vcpu-8gb": {
+                "cpu": 3600,
+                "memory": 6750,
+                "storage": 141000,
+                "operatingSystem": "Linux",
+                "price": 480,
+                "id": 10
+            },
+            "s-4vcpu-8gb-amd": {
+                "cpu": 3600,
+                "memory": 6750,
+                "storage": 141000,
+                "operatingSystem": "Linux",
+                "price": 560,
+                "id": 11
+            },
+            "g-2vcpu-8gb": {
+                "cpu": 1800,
+                "memory": 6750,
+                "storage": 19500,
+                "operatingSystem": "Linux",
+                "price": 630,
+                "id": 12
+            },
+            "m-2vcpu-16gb": {
+                "cpu": 1800,
+                "memory": 13950,
+                "storage": 42000,
+                "operatingSystem": "Linux",
+                "price": 840,
+                "id": 13
+            },
+            "m3-2vcpu-16gb": {
+                "cpu": 1800,
+                "memory": 13950,
+                "storage": 132000,
+                "operatingSystem": "Linux",
+                "price": 1040,
+                "id": 15
+            },
+            "s-8vcpu-16gb-amd": {
+                "cpu": 7200,
+                "memory": 13950,
+                "storage": 285000,
+                "operatingSystem": "Linux",
+                "price": 1120,
+                "id": 15
+            },
+            "s-8vcpu-16gb-intel": {
+                "cpu": 7200,
+                "memory": 13950,
+                "storage": 285000,
+                "operatingSystem": "Linux",
+                "price": 1120,
+                "id": 15
+            },
+            "g-4vcpu-16gb": {
+                "cpu": 3600,
+                "memory": 13950,
+                "storage": 42000,
+                "operatingSystem": "Linux",
+                "price": 1260,
+                "id": 15
+            },
+            "gd-4vcpu-16gb": {
+                "cpu": 3600,
+                "memory": 13950,
+                "storage": 87000,
+                "operatingSystem": "Linux",
+                "price": 1360,
+                "id": 17
+            },
+            "m6-4vcpu-32gb": {
+                "cpu": 3600,
+                "memory": 28350,
+                "storage": 537000,
+                "operatingSystem": "Linux",
+                "price": 2620,
+                "id": 19
+            }
+        }
+    }
+}
