@@ -14,7 +14,10 @@ import matplotlib.pyplot as plt
 
 def read_jsons(path_to_dir):
     all_json_data = []
+    index = 0
     for file_name in os.listdir(path_to_dir):
+        index = index + 1
+        print(f"DURING DIR READ {index}")
         file_path = f'{path_to_dir}/{file_name}'
         with open(file_path, 'r') as json_file:
             json_data = json.load(json_file)
@@ -174,18 +177,29 @@ def to_assignment_matrix(graph, dec_graph, tensor, components_nr):
 
 
 if __name__ == '__main__':
-    data = read_jsons('secureWebContainers_DO')
+    print("BEFORE DIR READ")
+    data = read_jsons('old_secureWebContainers_DO')
+    print("AFTER DIR READ")
+
     graphs = []
+    index = 0
     for json_graph_data in data:
+        index = index + 1
+        print(f"DURING Graphs construct {index}")
         filename = json_graph_data['filename']
         graphs.append(get_graph_data(json_graph_data, filename))
 
     dgl_graphs = []
-    for graph in graphs[:10000]:
+    index = 0
+
+    for graph in graphs[:100000]:
+        index = index + 1
+        print(f"DURING Graphs dgl convert {index}")
         # print('\n\nGraph Nodes AND Edges')
         # print(graph)
         dataset = DGLGraph(graph)
         dgl_graph = dataset[0]
+        dgl_graph = dgl_graph.to('cuda')
         # print_dataset(dgl_graph)
         dgl_graphs.append(dgl_graph)
 
@@ -201,6 +215,7 @@ if __name__ == '__main__':
     test = arr[size1 + size2:].tolist()
 
     model = Model(7, 10, 5, ['conflict', 'linked', 'unlinked'])
+    model = model.to('cuda')
     opt = torch.optim.Adam(model.parameters())
     loss_list = []
     loss_list_valid = []
@@ -208,7 +223,7 @@ if __name__ == '__main__':
     acc_training_list = []
     acc_validation_list = []
 
-    epochs = 50
+    epochs = 10
     for epoch in range(epochs):
         ###########################################################################################################################################################
         ######################################################################## TRAINING #########################################################################
@@ -223,10 +238,13 @@ if __name__ == '__main__':
         total_labels = None
         for train_graph in train:
             dec_graph = train_graph['component', :, 'vm']
-
+            dec_graph = dec_graph.to('cuda')
             edge_label = dec_graph.edata[dgl.ETYPE]
+            edge_label = edge_label.to('cuda')
             comp_feats = train_graph.nodes['component'].data['feat']
+            comp_feats = comp_feats.to('cuda')
             vm_feats =  train_graph.nodes['vm'].data['feat']
+            vm_feats = vm_feats.to('cuda')
             node_features = {'component': comp_feats, 'vm': vm_feats}
 
             logits = model(train_graph, node_features, dec_graph)
