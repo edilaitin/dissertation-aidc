@@ -34,7 +34,7 @@ class DGLGraph(DGLDataset):
         deployed_dest = [j for i in range(size_components) for j in range(size_vms)]
         self.graph = dgl.heterograph({
             ('component', 'conflict', 'component'): (torch.tensor(components_src), torch.tensor(components_dest)), # component linkedCC
-            ('component', 'linked', 'vm'): (torch.tensor(link_src), torch.tensor(link_dest)), # component linkedCM
+            ('component', 'linked', 'vm'): (torch.tensor(link_src), torch.tensor(link_dest)),  # component linkedCM
             ('component', 'unlinked', 'vm'): (torch.tensor(unlink_src), torch.tensor(unlink_dest))  # component unlinkedCM
         })
         features_components = [x.features for x in self.graph_init.nodes if x.get_type() == "component"]

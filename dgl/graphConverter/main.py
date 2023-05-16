@@ -6,10 +6,12 @@ import torch
 import numpy as np
 from graph import Node, Graph
 from dgl_graph import DGLGraph,print_dataset
+from ohe import edge_constraints_encoding
 import torch.nn as nn
 import torch.nn.functional as F
 import dgl.nn as dglnn
 import matplotlib.pyplot as plt
+import dgl.function as fn
 
 
 def read_jsons(path_to_dir):
@@ -108,55 +110,76 @@ def get_graph_data(json_data, file_name):
     vm_nodes = get_vm_nodes(json_data, len(component_nodes) + 1, max_cpu, max_mem, max_storage, max_price, surrogate_result)
     return Graph(file_name, component_nodes, vm_nodes, restrictions, assign, json_data["output"], surrogate_result)
 
+class GNNLayer(nn.Module):
+    def __init__(self, ndim_in, edims, ndim_out, activation):
+        super(GNNLayer, self).__init__()
+        self.W_msg = nn.Linear(ndim_in + edims, ndim_out)
+        self.W_apply = nn.Linear(ndim_in + ndim_out, ndim_out)
+        self.activation = activation
+    def message_func(self, edges):
+        return {'m': F.relu(self.W_msg(torch.cat([edges.src['h'], edges.data['h']], 1)))}
+    def forward(self, g_dgl, nfeats, efeats):
+        with g_dgl.local_scope():
+            g = g_dgl
+            g.ndata['h'] = nfeats
+            g.edata['h'] = efeats
+            g.update_all(self.message_func, fn.sum('m', 'h_neigh'))
+            g.ndata['h'] = F.relu(self.W_apply(torch.cat([g.ndata['h'], g.ndata['h_neigh']], 1)))
+            return g.ndata['h']
 
-class HeteroMLPPredictor(nn.Module):
-    def __init__(self, in_dims, n_classes):
-        super().__init__()
-        self.W = nn.Linear(in_dims * 2, n_classes)
+class GNNTower(nn.Module):
+    def __init__(self, in_feats, edge_dim, hidden_feats, out_feats, num_layers = 5):
+        super(GNNTower, self).__init__()
+        activation = nn.ReLU()
+        self.layers = nn.ModuleList()
+        self.layers.append(GNNLayer(in_feats, edge_dim, 50, activation))
+        self.layers.append(GNNLayer(50, edge_dim, 25, activation))
+        self.layers.append(GNNLayer(25, edge_dim, out_feats, activation))
+        dropout = 0.5
+        self.dropout = nn.Dropout(p=dropout)
 
-    def apply_edges(self, edges):
-        x = torch.cat([edges.src['h'], edges.dst['h']], 1)
-        y = self.W(x)
-        return {'score': y}
+    def forward(self, g, nfeats, efeats):
+        for i, layer in enumerate(self.layers):
+            if i != 0:
+                nfeats = self.dropout(nfeats)
+            nfeats = layer(g, nfeats, efeats)
+        return nfeats
 
-    def forward(self, graph, h):
-        # h contains the node representations for each edge type computed from
-        # the GNN for heterogeneous graphs defined in the node classification
-        # section (Section 5.1).
-        with graph.local_scope():
-            graph.ndata['h'] = h  # assigns 'h' of all node types in one shot
-            graph.apply_edges(self.apply_edges)
-            return graph.edata['score']
+
+class MLPTower(nn.Module):
+    def __init__(self, in_feats, hidden_feats, out_feats):
+        super(MLPTower, self).__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_feats, hidden_feats),
+            nn.ReLU(),
+            nn.Linear(hidden_feats, out_feats)
+        )
+
+    def forward(self, features):
+        h = self.mlp(features)
+        return h
 
 
 class Model(nn.Module):
-    def __init__(self, in_features, hidden_features, out_features, rel_names):
-        super().__init__()
-        self.sage = RGCN(in_features, hidden_features, out_features, rel_names)
-        self.pred = HeteroMLPPredictor(out_features, len(rel_names))
+    def __init__(self, gnn_in_feats, gnn_edge_feats, gnn_hidden_feats, gnn_out_feats,
+                 mlp_in_feats, mlp_hidden_feats, mlp_out_feats):
+        super(Model, self).__init__()
+        self.gnn_tower = GNNTower(gnn_in_feats, gnn_edge_feats, gnn_hidden_feats, gnn_out_feats)
+        self.mlp_tower = MLPTower(mlp_in_feats, mlp_hidden_feats, mlp_out_feats)
 
-    def forward(self, g, x, dec_graph):
-        h = self.sage(g, x)
-        return self.pred(dec_graph, h)
+    def forward(self, g, component_features, component_edges_features, vm_features, edges):
+        component_embeddings = self.gnn_tower(g, component_features, component_edges_features)
+        component_embeddings = component_embeddings.to('cuda')
+        vm_embeddings = self.mlp_tower(vm_features)
+        vm_embeddings = vm_embeddings.to('cuda')
 
+        edge_tensors = [e.clone().detach().to('cuda') for e in edges]
+        edge_embeddings = torch.cat([component_embeddings[edge_tensors[0]], vm_embeddings[edge_tensors[1]]], dim=-1)
+        edge_embeddings = edge_embeddings.to('cuda')
+        logits = torch.sigmoid(torch.sum(edge_embeddings, dim=-1))
+        # print(logits)
+        return logits
 
-class RGCN(nn.Module):
-    def __init__(self, in_feats, hid_feats, out_feats, rel_names):
-        super().__init__()
-        # INCREASE LAYERS
-        self.conv1 = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(in_feats, hid_feats)
-            for rel in rel_names}, aggregate='sum')
-        self.conv2 = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(hid_feats, out_feats)
-            for rel in rel_names}, aggregate='sum')
-
-    def forward(self, graph, inputs):
-        # inputs are features of nodes
-        h = self.conv1(graph, inputs)
-        h = {k: F.relu(v) for k, v in h.items()}
-        h = self.conv2(graph, h)
-        return h
 
 def to_assignment_matrix(graph, dec_graph, tensor, components_nr):
     vms_nr = int(len(tensor) / components_nr)
@@ -169,10 +192,10 @@ def to_assignment_matrix(graph, dec_graph, tensor, components_nr):
         component = graph.edges(form='uv', order='srcdst', etype=type_edge)[0][orig_index].item()
         vm = graph.edges(form='uv', order='srcdst', etype=type_edge)[1][orig_index].item()
         value = tensor[dec_ind].item()
-        if value == 2:
-            assign_matrix[component][vm] = 0
-        else:
+        if value == 0:
             assign_matrix[component][vm] = 1
+        else:
+            assign_matrix[component][vm] = 0
     return assign_matrix
 
 
@@ -183,7 +206,7 @@ if __name__ == '__main__':
 
     graphs = []
     index = 0
-    for json_graph_data in data:
+    for json_graph_data in data[:1000]:
         index = index + 1
         print(f"DURING Graphs construct {index}")
         filename = json_graph_data['filename']
@@ -192,7 +215,7 @@ if __name__ == '__main__':
     dgl_graphs = []
     index = 0
 
-    for graph in graphs[:100000]:
+    for graph in graphs[:1000]:
         index = index + 1
         print(f"DURING Graphs dgl convert {index}")
         # print('\n\nGraph Nodes AND Edges')
@@ -214,7 +237,7 @@ if __name__ == '__main__':
     validation = arr[size1:size1 + size2].tolist()
     test = arr[size1 + size2:].tolist()
 
-    model = Model(7, 10, 5, ['conflict', 'linked', 'unlinked'])
+    model = Model(7, 7, 10, 5, 4, 10, 2)
     model = model.to('cuda')
     opt = torch.optim.Adam(model.parameters())
     loss_list = []
@@ -223,7 +246,7 @@ if __name__ == '__main__':
     acc_training_list = []
     acc_validation_list = []
 
-    epochs = 10
+    epochs = 1000
     for epoch in range(epochs):
         ###########################################################################################################################################################
         ######################################################################## TRAINING #########################################################################
@@ -237,27 +260,55 @@ if __name__ == '__main__':
         total_logits = None
         total_labels = None
         for train_graph in train:
+            comp_feats = train_graph.nodes['component'].data['feat']
+            component_edges_features = train_graph['conflict'].edata['feat']
+            component_edges_features = component_edges_features.to('cuda')
             dec_graph = train_graph['component', :, 'vm']
             dec_graph = dec_graph.to('cuda')
-            edge_label = dec_graph.edata[dgl.ETYPE]
-            edge_label = edge_label.to('cuda')
-            comp_feats = train_graph.nodes['component'].data['feat']
             comp_feats = comp_feats.to('cuda')
             vm_feats =  train_graph.nodes['vm'].data['feat']
             vm_feats = vm_feats.to('cuda')
             node_features = {'component': comp_feats, 'vm': vm_feats}
+            edges = dec_graph['linked+unlinked'].edges()
 
-            logits = model(train_graph, node_features, dec_graph)
+            positive_edge_ids = dec_graph.filter_edges(lambda edges: edges.data['_TYPE'] == 1)
+            negative_edge_ids = dec_graph.filter_edges(lambda edges: edges.data['_TYPE'] == 2)
+
+            testing_edge_ids = positive_edge_ids.clone()
+
+            # Randomly sample 30% of negative_edge_ids
+            num_samples = int(0.3 * negative_edge_ids.size(0))
+            random_indices = torch.randperm(negative_edge_ids.size(0))[:num_samples]
+            sampled_negative = negative_edge_ids[random_indices]
+
+            # Concatenate sampled_negative with positives
+            testing_edge_ids = torch.cat((testing_edge_ids, sampled_negative), dim=0)
+
+            # Access the source and destination nodes of the filtered edges
+            filtered_edges = dec_graph.find_edges(testing_edge_ids)
+
+            edge_label = dec_graph.edata[dgl.ETYPE][testing_edge_ids]
+            edge_label = edge_label.to('cuda')
+
+            graph = train_graph['conflict']
+            # print(dec_graph)
+            target = edge_label.clone().detach() - 1
+            target = target.to('cuda')
+
+            logits = model(graph, comp_feats, component_edges_features, vm_feats, filtered_edges)
             if total_logits == None:
                 total_logits = logits
             else:
                 total_logits = torch.cat((total_logits, logits))
+            # print(logits)
             if total_labels == None:
-                total_labels = edge_label
+                total_labels = target
             else:
-                total_labels = torch.cat((total_labels, edge_label))
-            y_pred.append(logits.argmax(dim=-1))
-            y_true.append(edge_label)
+                total_labels = torch.cat((total_labels, target))
+            predicted_class = logits.round().long()
+            # print(predicted_class)
+            y_pred.append(predicted_class)
+            y_true.append(target)
 
         # concatenate the predictions and true labels into tensors
         y_pred = torch.cat(y_pred)
@@ -283,18 +334,24 @@ if __name__ == '__main__':
         # loop over the validation graphs and compute the predictions and true labels
         for validation_graph in validation:
             dec_graph = validation_graph['component', :, 'vm']
-
             edge_label = dec_graph.edata[dgl.ETYPE]
             comp_feats = validation_graph.nodes['component'].data['feat']
+            component_edges_features = validation_graph['conflict'].edata['feat']
+            component_edges_features = component_edges_features.to('cuda')
             vm_feats = validation_graph.nodes['vm'].data['feat']
-            node_features = {'component': comp_feats, 'vm': vm_feats}
+            edges = dec_graph['linked+unlinked'].edges()
+            graph = validation_graph['conflict']
+            target = edge_label.clone().detach() - 1
+            target = target.to('cuda')
             with torch.no_grad():
-                logits = model(validation_graph, node_features, dec_graph)
-                loss = F.cross_entropy(logits, edge_label)
+                logits = model(graph, comp_feats, component_edges_features, vm_feats, edges)
+                criterion = nn.BCEWithLogitsLoss()
+                loss = criterion(logits, target.float())
                 avg_loss.append(loss.item())
 
-            y_pred.append(logits.argmax(dim=-1))
-            y_true.append(edge_label)
+            predicted_class = logits.round().long()
+            y_pred.append(predicted_class)
+            y_true.append(target)
 
         loss_avg = sum(avg_loss)/len(avg_loss)
         loss_list_valid.append(loss_avg)
@@ -308,7 +365,9 @@ if __name__ == '__main__':
         acc_validation_list.append(accuracy)
         print("Validation accuracy:", accuracy)
 
-        loss = F.cross_entropy(total_logits, total_labels)
+        criterion = nn.BCEWithLogitsLoss()
+        loss = criterion(total_logits, total_labels.float())
+        print(loss.item())
         loss_list.append(loss.item())
         opt.zero_grad()
         loss.backward()
@@ -345,19 +404,24 @@ if __name__ == '__main__':
     # loop over the test graphs and compute the predictions and true labels
     for test_graph in test:
         dec_graph = test_graph['component', :, 'vm']
-        print(dec_graph)
-
         edge_label = dec_graph.edata[dgl.ETYPE]
         comp_feats = test_graph.nodes['component'].data['feat']
+        component_edges_features = test_graph['conflict'].edata['feat']
+        component_edges_features = component_edges_features.to('cuda')
         vm_feats = test_graph.nodes['vm'].data['feat']
-        node_features = {'component': comp_feats, 'vm': vm_feats}
+        edges = dec_graph['linked+unlinked'].edges()
+        graph = test_graph['conflict']
+        target = edge_label.clone().detach() - 1
+        target = target.to('cuda')
+
         with torch.no_grad():
-            logits = model(test_graph, node_features, dec_graph)
-        pred = logits.argmax(dim=-1)
+            logits = model(graph, comp_feats, component_edges_features, vm_feats, edges)
+
+        pred = logits.round().long()
         y_pred.append(pred)
         print(f"Prediction {to_assignment_matrix(test_graph, dec_graph, pred, 5)}")
-        y_true.append(edge_label)
-        print(f"Actual {to_assignment_matrix(test_graph, dec_graph, edge_label, 5)}")
+        y_true.append(target)
+        print(f"Actual {to_assignment_matrix(test_graph, dec_graph, target, 5)}")
 
     # concatenate the predictions and true labels into tensors
     y_pred = torch.cat(y_pred)

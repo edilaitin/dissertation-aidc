@@ -90,6 +90,10 @@ class Graph:
                     edge_features = edge_constraints_encoding(res["type"])
                     edge = Edge(node1, node2, edge_features)
                     add_edge_features(edge)
+        for node in component_nodes:
+            edge_features = edge_constraints_encoding("Loop")
+            edge = Edge(node, node, edge_features)
+            add_edge_features(edge)
         links_exists = defaultdict(dict)
         for comp_idx, comp_links in enumerate(assign_matr):
             type_indexes = [0] * int(len(vm_nodes) / surrogate_result)
