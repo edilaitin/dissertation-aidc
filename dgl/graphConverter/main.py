@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import dgl.nn as dglnn
 import matplotlib.pyplot as plt
+from focal_loss.focal_loss import FocalLoss
 
 
 def read_jsons(path_to_dir):
@@ -75,7 +76,7 @@ def get_vm_nodes(json_data, starting_index, max_cpu, max_mem, max_storage, max_p
             vm_specs["price"] / max_price
         ]
         for i in range(surrogate_result):
-            vm_nodes.append(Node(starting_index + idx, vm_features, "vm"))
+            vm_nodes.append(Node(starting_index + idx, vm_features + [(i+1) / surrogate_result], "vm"))
             idx = idx + 1
     return vm_nodes
 
@@ -175,6 +176,23 @@ def to_assignment_matrix(graph, dec_graph, tensor, components_nr):
             assign_matrix[component][vm] = 1
     return assign_matrix
 
+def count_matches_and_diffs(list1, list2):
+    # Ensure the lists have the same length
+    if len(list1) != len(list2):
+        raise ValueError("Lists must have the same length")
+
+    # Initialize counters
+    matches = 0
+    diffs = 0
+
+    # Iterate through the lists
+    for i in range(len(list1)):
+        if list1[i] == 1 and list2[i] == 1:
+            matches += 1
+        elif list1[i] != list2[i]:
+            diffs += 1
+
+    return matches, diffs
 
 if __name__ == '__main__':
     print("BEFORE DIR READ")
@@ -183,7 +201,7 @@ if __name__ == '__main__':
 
     graphs = []
     index = 0
-    for json_graph_data in data:
+    for json_graph_data in data[:1000]:
         index = index + 1
         print(f"DURING Graphs construct {index}")
         filename = json_graph_data['filename']
@@ -192,7 +210,7 @@ if __name__ == '__main__':
     dgl_graphs = []
     index = 0
 
-    for graph in graphs[:100000]:
+    for graph in graphs:
         index = index + 1
         print(f"DURING Graphs dgl convert {index}")
         # print('\n\nGraph Nodes AND Edges')
@@ -223,7 +241,12 @@ if __name__ == '__main__':
     acc_training_list = []
     acc_validation_list = []
 
-    epochs = 10
+    class_weights = torch.FloatTensor([0.0, 0.9, 0.1])
+    class_weights = class_weights.to('cuda')
+    loss_func = FocalLoss(weights=class_weights, gamma=0.7)
+    m = torch.nn.Softmax(dim=-1)
+
+    epochs = 300
     for epoch in range(epochs):
         ###########################################################################################################################################################
         ######################################################################## TRAINING #########################################################################
@@ -245,6 +268,7 @@ if __name__ == '__main__':
             comp_feats = comp_feats.to('cuda')
             vm_feats =  train_graph.nodes['vm'].data['feat']
             vm_feats = vm_feats.to('cuda')
+
             node_features = {'component': comp_feats, 'vm': vm_feats}
 
             logits = model(train_graph, node_features, dec_graph)
@@ -290,7 +314,8 @@ if __name__ == '__main__':
             node_features = {'component': comp_feats, 'vm': vm_feats}
             with torch.no_grad():
                 logits = model(validation_graph, node_features, dec_graph)
-                loss = F.cross_entropy(logits, edge_label)
+                # loss = ((m(logits) - edge_label) ** 2).mean()
+                loss = loss_func(m(logits), edge_label)
                 avg_loss.append(loss.item())
 
             y_pred.append(logits.argmax(dim=-1))
@@ -308,8 +333,10 @@ if __name__ == '__main__':
         acc_validation_list.append(accuracy)
         print("Validation accuracy:", accuracy)
 
-        loss = F.cross_entropy(total_logits, total_labels)
+        # loss = ((total_logits - total_labels) ** 2).mean()
+        loss = loss_func(m(total_logits), total_labels)
         loss_list.append(loss.item())
+        print(loss.item())
         opt.zero_grad()
         loss.backward()
         opt.step()
@@ -355,9 +382,13 @@ if __name__ == '__main__':
             logits = model(test_graph, node_features, dec_graph)
         pred = logits.argmax(dim=-1)
         y_pred.append(pred)
-        print(f"Prediction {to_assignment_matrix(test_graph, dec_graph, pred, 5)}")
+        assingnament_pred = to_assignment_matrix(test_graph, dec_graph, pred, 5)
+        assingnament_actual = to_assignment_matrix(test_graph, dec_graph, edge_label, 5)
+        matches, diffs = count_matches_and_diffs([element for row in assingnament_pred for element in row], [element for row in assingnament_actual for element in row])
+        print(f"{matches} values match; {diffs} don't")
+        print(f"Prediction {assingnament_pred}")
         y_true.append(edge_label)
-        print(f"Actual {to_assignment_matrix(test_graph, dec_graph, edge_label, 5)}")
+        print(f"Actual {assingnament_actual}")
 
     # concatenate the predictions and true labels into tensors
     y_pred = torch.cat(y_pred)
@@ -367,5 +398,4 @@ if __name__ == '__main__':
     accuracy = (y_pred == y_true).float().mean().item()
     acc_validation_list.append(accuracy)
     print("Testing accuracy:", accuracy)
-
 
