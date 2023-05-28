@@ -194,6 +194,9 @@ def count_matches_and_diffs(list1, list2):
 
     return matches, diffs
 
+def split_into_batches(arr, batch_size):
+    return [arr[i:i+batch_size] for i in range(0, len(arr), batch_size)]
+
 if __name__ == '__main__':
     print("BEFORE DIR READ")
     data = read_jsons('old_secureWebContainers_DO')
@@ -201,7 +204,7 @@ if __name__ == '__main__':
 
     graphs = []
     index = 0
-    for json_graph_data in data[:1000]:
+    for json_graph_data in data[:10000]:
         index = index + 1
         print(f"DURING Graphs construct {index}")
         filename = json_graph_data['filename']
@@ -212,7 +215,7 @@ if __name__ == '__main__':
 
     for graph in graphs:
         index = index + 1
-        print(f"DURING Graphs dgl convert {index}")
+        print(f"DURING Graphs dgl convert cuda {index}")
         # print('\n\nGraph Nodes AND Edges')
         # print(graph)
         dataset = DGLGraph(graph)
@@ -246,42 +249,60 @@ if __name__ == '__main__':
     loss_func = FocalLoss(weights=class_weights, gamma=0.7)
     m = torch.nn.Softmax(dim=-1)
 
-    epochs = 300
+    epochs = 20
     for epoch in range(epochs):
         ###########################################################################################################################################################
         ######################################################################## TRAINING #########################################################################
         ###########################################################################################################################################################
         # set the model to train mode
         model.train()
+
         # create empty lists to store the predictions and true labels
         y_pred = []
         y_true = []
 
-        total_logits = None
-        total_labels = None
-        for train_graph in train:
-            dec_graph = train_graph['component', :, 'vm']
-            dec_graph = dec_graph.to('cuda')
-            edge_label = dec_graph.edata[dgl.ETYPE]
-            edge_label = edge_label.to('cuda')
-            comp_feats = train_graph.nodes['component'].data['feat']
-            comp_feats = comp_feats.to('cuda')
-            vm_feats =  train_graph.nodes['vm'].data['feat']
-            vm_feats = vm_feats.to('cuda')
+        batch_size = 20
+        batched_training = split_into_batches(train, batch_size)
+        for train_graphs in batched_training:
+            loss_list_batch = []
+            total_logits = None
+            total_labels = None
 
-            node_features = {'component': comp_feats, 'vm': vm_feats}
+            for train_graph in train_graphs:
+                train_graph = train_graph.to('cuda')
+                dec_graph = train_graph['component', :, 'vm']
+                dec_graph = dec_graph.to('cuda')
+                edge_label = dec_graph.edata[dgl.ETYPE]
+                edge_label = edge_label.to('cuda')
+                comp_feats = train_graph.nodes['component'].data['feat']
+                comp_feats = comp_feats.to('cuda')
+                vm_feats =  train_graph.nodes['vm'].data['feat']
+                vm_feats = vm_feats.to('cuda')
 
-            logits = model(train_graph, node_features, dec_graph)
-            if total_logits == None:
-                total_logits = logits
-            else:
-                total_logits = torch.cat((total_logits, logits))
-            if total_labels == None:
-                total_labels = edge_label
-            else:
-                total_labels = torch.cat((total_labels, edge_label))
-            y_pred.append(logits.argmax(dim=-1))
-            y_true.append(edge_label)
+                node_features = {'component': comp_feats, 'vm': vm_feats}
+
+                logits = model(train_graph, node_features, dec_graph)
+                logits = logits.to('cuda')
+                if total_logits == None:
+                    total_logits = logits
+                else:
+                    total_logits = torch.cat((total_logits, logits))
+                if total_labels == None:
+                    total_labels = edge_label
+                else:
+                    total_labels = torch.cat((total_labels, edge_label))
+                y_pred.append(logits.argmax(dim=-1))
+                y_true.append(edge_label)
+
+            # loss = ((total_logits - total_labels) ** 2).mean()
+            loss = loss_func(m(total_logits), total_labels)
+            loss_list_batch.append(loss.item())
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+        loss_list.append(loss_list_batch[0])
+        print(loss_list_batch[0])
 
         # concatenate the predictions and true labels into tensors
         y_pred = torch.cat(y_pred)
@@ -297,13 +318,12 @@ if __name__ == '__main__':
         ###########################################################################################################################################################
 
         # create empty lists to store the predictions and true labels
-        y_pred = []
-        y_true = []
+        y_pred_val = []
+        y_true_val = []
 
         # set the model to evaluation mode
-        # model.eval()
+        model.eval()
         avg_loss = []
-
         # loop over the validation graphs and compute the predictions and true labels
         for validation_graph in validation:
             dec_graph = validation_graph['component', :, 'vm']
@@ -318,28 +338,20 @@ if __name__ == '__main__':
                 loss = loss_func(m(logits), edge_label)
                 avg_loss.append(loss.item())
 
-            y_pred.append(logits.argmax(dim=-1))
-            y_true.append(edge_label)
+            y_pred_val.append(logits.argmax(dim=-1))
+            y_true_val.append(edge_label)
 
         loss_avg = sum(avg_loss)/len(avg_loss)
         loss_list_valid.append(loss_avg)
 
         # concatenate the predictions and true labels into tensors
-        y_pred = torch.cat(y_pred)
-        y_true = torch.cat(y_true)
+        y_pred_val = torch.cat(y_pred_val)
+        y_true_val = torch.cat(y_true_val)
 
         # compute the accuracy of the model on the validation set
-        accuracy = (y_pred == y_true).float().mean().item()
+        accuracy = (y_pred_val == y_true_val).float().mean().item()
         acc_validation_list.append(accuracy)
         print("Validation accuracy:", accuracy)
-
-        # loss = ((total_logits - total_labels) ** 2).mean()
-        loss = loss_func(m(total_logits), total_labels)
-        loss_list.append(loss.item())
-        print(loss.item())
-        opt.zero_grad()
-        loss.backward()
-        opt.step()
 
     print(loss_list)
     print(loss_list_valid)
