@@ -157,23 +157,23 @@ class RGCN(nn.Module):
         h = self.conv1(graph, inputs)
         h = {k: F.relu(v) for k, v in h.items()}
         h = self.conv2(graph, h)
+        h['component'] = torch.index_select(h['component'], 0, torch.tensor([4]).to('cuda'))
         return h
 
 def to_assignment_matrix(graph, dec_graph, tensor, components_nr):
     vms_nr = int(len(tensor) / components_nr)
-    assign_matrix = [[0 for _ in range(vms_nr)] for _ in range(components_nr)]
+    assign_matrix = [0 for _ in range(vms_nr)]
 
     for dec_ind in range(len(tensor)):
         type = dec_graph.edata[dgl.ETYPE][dec_ind].item()
         orig_index = dec_graph.edata[dgl.EID][dec_ind].item()
         type_edge = graph.etypes[type]
-        component = graph.edges(form='uv', order='srcdst', etype=type_edge)[0][orig_index].item()
         vm = graph.edges(form='uv', order='srcdst', etype=type_edge)[1][orig_index].item()
         value = tensor[dec_ind].item()
         if value == 2:
-            assign_matrix[component][vm] = 0
+            assign_matrix[vm] = 0
         else:
-            assign_matrix[component][vm] = 1
+            assign_matrix[vm] = 1
     return assign_matrix
 
 def count_matches_and_diffs(list1, list2):
@@ -204,7 +204,7 @@ if __name__ == '__main__':
 
     graphs = []
     index = 0
-    for json_graph_data in data[:10000]:
+    for json_graph_data in data[:1000]:
         index = index + 1
         print(f"DURING Graphs construct {index}")
         filename = json_graph_data['filename']
@@ -249,7 +249,7 @@ if __name__ == '__main__':
     loss_func = FocalLoss(weights=class_weights, gamma=0.7)
     m = torch.nn.Softmax(dim=-1)
 
-    epochs = 20
+    epochs = 300
     for epoch in range(epochs):
         ###########################################################################################################################################################
         ######################################################################## TRAINING #########################################################################
@@ -261,7 +261,7 @@ if __name__ == '__main__':
         y_pred = []
         y_true = []
 
-        batch_size = 20
+        batch_size = 1000
         batched_training = split_into_batches(train, batch_size)
         for train_graphs in batched_training:
             loss_list_batch = []
@@ -272,11 +272,13 @@ if __name__ == '__main__':
                 train_graph = train_graph.to('cuda')
                 dec_graph = train_graph['component', :, 'vm']
                 dec_graph = dec_graph.to('cuda')
+                filtered_edge_ids = dec_graph.out_edges(4, form='eid')
+                dec_graph = dec_graph.edge_subgraph(filtered_edge_ids)
                 edge_label = dec_graph.edata[dgl.ETYPE]
                 edge_label = edge_label.to('cuda')
                 comp_feats = train_graph.nodes['component'].data['feat']
                 comp_feats = comp_feats.to('cuda')
-                vm_feats =  train_graph.nodes['vm'].data['feat']
+                vm_feats = train_graph.nodes['vm'].data['feat']
                 vm_feats = vm_feats.to('cuda')
 
                 node_features = {'component': comp_feats, 'vm': vm_feats}
@@ -327,7 +329,8 @@ if __name__ == '__main__':
         # loop over the validation graphs and compute the predictions and true labels
         for validation_graph in validation:
             dec_graph = validation_graph['component', :, 'vm']
-
+            filtered_edge_ids = dec_graph.out_edges(4, form='eid')
+            dec_graph = dec_graph.edge_subgraph(filtered_edge_ids)
             edge_label = dec_graph.edata[dgl.ETYPE]
             comp_feats = validation_graph.nodes['component'].data['feat']
             vm_feats = validation_graph.nodes['vm'].data['feat']
@@ -384,8 +387,8 @@ if __name__ == '__main__':
     # loop over the test graphs and compute the predictions and true labels
     for test_graph in test:
         dec_graph = test_graph['component', :, 'vm']
-        print(dec_graph)
-
+        filtered_edge_ids = dec_graph.out_edges(4, form='eid')
+        dec_graph = dec_graph.edge_subgraph(filtered_edge_ids)
         edge_label = dec_graph.edata[dgl.ETYPE]
         comp_feats = test_graph.nodes['component'].data['feat']
         vm_feats = test_graph.nodes['vm'].data['feat']
@@ -394,9 +397,9 @@ if __name__ == '__main__':
             logits = model(test_graph, node_features, dec_graph)
         pred = logits.argmax(dim=-1)
         y_pred.append(pred)
-        assingnament_pred = to_assignment_matrix(test_graph, dec_graph, pred, 5)
-        assingnament_actual = to_assignment_matrix(test_graph, dec_graph, edge_label, 5)
-        matches, diffs = count_matches_and_diffs([element for row in assingnament_pred for element in row], [element for row in assingnament_actual for element in row])
+        assingnament_pred = to_assignment_matrix(test_graph, test_graph['component', :, 'vm'], pred, 1)
+        assingnament_actual = to_assignment_matrix(test_graph, test_graph['component', :, 'vm'], edge_label, 1)
+        matches, diffs = count_matches_and_diffs(assingnament_pred, assingnament_actual)
         print(f"{matches} values match; {diffs} don't")
         print(f"Prediction {assingnament_pred}")
         y_true.append(edge_label)
